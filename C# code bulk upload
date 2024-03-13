@@ -1,0 +1,341 @@
+      public ActionResult _FamilyDetailBulkUploadExcel()
+        {
+
+            _exportExcel("Family Detail Upload");
+            return View();
+        }
+
+        public void _exportExcel(string excelName)
+        {
+            string date = DateTime.UtcNow.AddMinutes(330).ToString("yyyyMMdd_HHmm");
+            excelName = excelName + "_" + date;
+            DataTable dt = new DataTable();
+            dt.Columns.Add("S.No.", typeof(int));
+
+            dt.Columns.Add("Employee", typeof(string));
+            dt.Columns.Add("Employee Code", typeof(string));
+            dt.Columns.Add("Relationship", typeof(string));
+            dt.Columns.Add("Gender", typeof(string));
+            dt.Columns.Add("Date Of Birth", typeof(string));
+            dt.Columns.Add("Married Status", typeof(string));
+
+            XLWorkbook wb = new XLWorkbook();
+
+            var ws = wb.Worksheets.Add(dt, "Sheet1");
+            ws.SetAutoFilter(false);
+            ws.Tables.FirstOrDefault().ShowAutoFilter = false;
+
+            if (dt.Rows.Count > 0)
+            {
+                ws.Rows(1, 1).Style.Font.Bold = true;
+                ws.SetShowGridLines(true);
+
+                ws.Style.Border.OutsideBorder = XLBorderStyleValues.None;
+                ws.Style.Border.BottomBorder = XLBorderStyleValues.None;
+                Response.Clear();
+                Response.Buffer = true;
+                Response.Charset = "";
+
+                Response.ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                Response.AddHeader("content-disposition", "attachment;filename=" + excelName + ".xlsx");
+
+                MemoryStream MyMemoryStream = new MemoryStream();
+
+                wb.SaveAs(MyMemoryStream);
+                MyMemoryStream.WriteTo(Response.OutputStream);
+
+                Response.Flush();
+                Response.End();
+                MyMemoryStream.Dispose();
+                MyMemoryStream.Close();
+            }
+            else
+            {
+                ws.Rows(1, 1).Style.Font.Bold = true;
+
+                Response.Clear();
+                Response.Buffer = false;
+                Response.Charset = "";
+                Response.AddHeader("Content-Type", "application/vnd.ms-excel");
+                Response.AddHeader("content-disposition", "attachment;filename=" + excelName + ".xlsx");
+
+
+                MemoryStream MyMemoryStream = new MemoryStream();
+
+                wb.SaveAs(MyMemoryStream);
+                MyMemoryStream.WriteTo(Response.OutputStream);
+
+                Response.Flush();
+                Response.End();
+                MyMemoryStream.Dispose();
+                MyMemoryStream.Close();
+
+
+            }
+
+        }
+
+
+        public ActionResult _ImportFile()
+        {
+            if (payfun.sessionRecreate() == "expires")
+            {
+                return PartialView("_sessionExpired");
+            }
+            if (User.Identity.Name == "")
+            {
+                return PartialView("_sessionExpired");
+            }
+            string mes = "";
+
+            var postedFile = System.Web.HttpContext.Current.Request.Files["ExcelFile"];
+            List<string> data = new List<string>();
+            if (postedFile != null)
+            {
+
+                if (postedFile.ContentType == "application/vnd.ms-excel" || postedFile.ContentType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                {
+                    HttpPostedFileBase fileBase;
+                    DataTable dataTable = new DataTable();
+                    if (Request.Files.Count > 0)
+                    {
+                        foreach (string file in Request.Files)
+                        {
+                            fileBase = Request.Files[file] as HttpPostedFileBase;
+                            if (fileBase != null && fileBase.ContentLength > 0)
+                            {
+                                Stream stream = fileBase.InputStream;
+                                IExcelDataReader reader = null;
+                                if (fileBase.FileName.EndsWith(".xls"))
+                                {
+                                    reader = ExcelReaderFactory.CreateBinaryReader(stream);
+                                }
+                                else if (fileBase.FileName.EndsWith(".xlsx"))
+                                {
+                                    reader = ExcelReaderFactory.CreateOpenXmlReader(stream);
+                                }
+                                var result = reader.AsDataSet(new ExcelDataSetConfiguration()
+                                {
+                                    ConfigureDataTable = (_) => new ExcelDataTableConfiguration()
+                                    {
+                                        UseHeaderRow = true
+                                    }
+                                });
+                                dataTable = result.Tables[0];
+
+                                reader.Close();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        ViewBag.FCRewardMessage = "Please select a file for upload.";
+                    }
+
+
+                    DataTable resultCount = InsertFCReward(dataTable);
+
+                    var json = JsonConvert.SerializeObject(resultCount);
+
+                    return Json(json);
+
+                }
+
+
+            }
+            else
+            {
+                mes = "Error: Please select file";
+            }
+            return Json(mes, JsonRequestBehavior.AllowGet);
+        }
+
+        public DataTable InsertFCReward(DataTable importdt)
+        {
+
+            commonFunctions comf = new commonFunctions();
+            var postedFile = System.Web.HttpContext.Current.Request.Files["ExcelFile"];
+            DataTable dtExcel = new DataTable();
+
+            dtExcel.Columns.Add("SNo", typeof(int));
+            dtExcel.Columns.Add("FvEmployeeName", typeof(string));
+            dtExcel.Columns.Add("fvEmployeeCode", typeof(string));
+            dtExcel.Columns.Add("RelationName", typeof(string));
+            dtExcel.Columns.Add("Gender", typeof(string));
+            dtExcel.Columns.Add("DateOfBirth", typeof(string));
+            dtExcel.Columns.Add("MarriedStatus", typeof(string));
+ 
+            int insertCount = 0;
+
+            DataColumnCollection columns = importdt.Columns;
+            DataTable dt = importdt;
+            DataRow dr;
+            for (int i = 0; i < dt.Rows.Count; i++)
+            {
+
+                if (dt.Rows[i][0].ToString() != " ")
+                {
+                    dr = dtExcel.NewRow();
+
+                    if (dt.Rows[i]["S.No."] != System.DBNull.Value)
+                    {
+                        dr["SNo"] = dt.Rows[i]["S.No."].ToString();
+
+                    }
+                    else
+                    {
+                        dr["SNo"] = "0";
+                    }
+                    if (dt.Rows[i]["Employee"] != System.DBNull.Value)
+                    {
+                        dr["FvEmployeeName"] = dt.Rows[i]["Employee"].ToString();
+                    }
+                    else
+                    {
+                        dr["FvEmployeeName"] = "";
+                    }
+                    if (dt.Rows[i]["Employee Code"] != System.DBNull.Value)
+                    {
+                        dr["fvEmployeeCode"] = dt.Rows[i]["Employee Code"].ToString();
+                    }
+                    else
+                    {
+                        dr["fvEmployeeCode"] = "";
+                    }
+
+                    if (dt.Rows[i]["Relationship"] != System.DBNull.Value)
+                    {
+                        dr["RelationName"] = dt.Rows[i]["Relationship"].ToString();
+                    }
+                    else
+                    {
+                        dr["RelationName"] = "";
+                    }
+
+                    if (dt.Rows[i]["Gender"] != System.DBNull.Value)
+                    {
+                        dr["Gender"] = dt.Rows[i]["Gender"].ToString();
+
+
+                    }
+                    else
+                    {
+
+                        dr["Gender"] = "";
+                    }
+
+
+                    if (dt.Rows[i]["Date Of Birth"] != System.DBNull.Value)
+                    {
+                        dr["DateOfBirth"] = dt.Rows[i]["Date Of Birth"].ToString();
+                    }
+                    else
+                    {
+                        dr["DateOfBirth"] = "";
+                    }
+                    if (dt.Rows[i]["Married Status"] != System.DBNull.Value)
+                    {
+                        dr["MarriedStatus"] = dt.Rows[i]["Married Status"].ToString();
+                    }
+                    else
+                    {
+                        dr["MarriedStatus"] = "";
+                    }
+
+                   
+
+                    dtExcel.Rows.Add(dr);
+
+                }
+
+            }
+            return dtExcel;
+        }
+
+        public JsonResult _InsertDetail()
+        {
+
+            string mes = string.Empty;
+
+            try
+            {
+                dynamic jsonData = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(Request.Form["Table"].ToString());
+
+                DataTable dt = new DataTable();
+
+                dt.Columns.Add("S.No.", typeof(int));
+                dt.Columns.Add("FvEmployeeName", typeof(string));
+                dt.Columns.Add("fvEmployeeCode", typeof(string));
+                dt.Columns.Add("RelationName", typeof(string));
+                dt.Columns.Add("Gender", typeof(string));
+                dt.Columns.Add("DateOfBirth", typeof(string));
+                dt.Columns.Add("MarriedStatus", typeof(string));
+        
+
+                foreach (var Item in jsonData)
+                {
+                    DataRow dr = dt.NewRow();
+
+                    dr["FvEmployeeName"] = Item.FvEmployeeName;
+                    dr["fvEmployeeCode"] = Item.fvEmployeeCode;
+                    dr["RelationName"] = Item.RelationName;
+                    dr["Gender"] = Item.Gender;
+                    dr["DateOfBirth"] = Item.DateOfBirth;
+                    dr["MarriedStatus"] = Item.MarriedStatus;
+                    
+
+                    dt.Rows.Add(dr);
+                }
+
+                var i = 0;
+                var j = 0;
+                foreach (var Rows in dt.Rows)
+                {
+                    SqlCommand com = new SqlCommand();
+                    connection conObj = new connection();
+
+                    com.Connection = conObj.con;
+
+                    com.CommandType = CommandType.Text;
+                    com.CommandText = "Select fiEmployeeID from tblVIKSATpayEmployees where fvEmployeeCode = '" + dt.Rows[i]["fvEmployeeCode"] + "'";
+                    com.CommandTimeout = 0;
+                    if (conObj.con.State == ConnectionState.Closed)
+                        conObj.con.Open();
+
+                    var empId = Convert.ToInt32(com.ExecuteScalar());
+                    if (empId == 0)
+                    {
+                        return Json("Employee Code does not exist");
+                    }
+                    conObj.con.Close();
+                    i = i + 1;
+                }
+
+
+
+                foreach (var Rows in dt.Rows)
+                {
+                    SortedList list = new SortedList();
+                   
+                    list.Add("@EmpName", dt.Rows[j]["FvEmployeeName"]);
+                    list.Add("@Empcode", dt.Rows[j]["fvEmployeeCode"]);
+                    list.Add("@Relation", dt.Rows[j]["RelationName"]);
+                    list.Add("@Gender", dt.Rows[j]["Gender"]);
+                    list.Add("@ContactNo", "000000000");
+                    list.Add("@CreatedBy", 64);
+                    list.Add("@DateOfBirth", dt.Rows[j]["DateOfBirth"]);
+                    list.Add("@MarriedStatus", dt.Rows[j]["MarriedStatus"]);
+                   
+         
+                    mes = comfun.executeNonQueryWMessage("stpFamilyDetail_Import", "", list).ToString();
+                    j = j + 1;
+
+                }
+
+            }
+            catch (Exception ex)
+            {
+                mes = comfun.errorMessage("List", "Error: " + ex.Message);
+            }
+            return Json(mes);
+        }
